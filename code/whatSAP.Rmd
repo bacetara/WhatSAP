@@ -1,0 +1,610 @@
+---
+title: "Analiza potrošačkih navika kupaca"
+subtitle: "WhatSAP"
+author: "Tara Baće, Sara Gašpar, Mirta Hrnčić, Tin Salopek"
+date: "2024-12-16"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+***
+
+## Motivacija i opis problema
+Analiza potrošačkih navika kupaca omogućuje poduzećima prilagodbu ponude proizvoda različitim segmentima potrošača, s ciljem zadržavanja što većeg broja kupaca i poboljšanja prodajnih rezultata. Razumijevanje
+potrošačkih preferencija povećava učinkovitost marketinških kampanja kroz ciljano oglašavanje, optimizira
+asortiman te pospješuje upravljanje zalihama proizvoda.
+
+## Učitavanje i uređivanje podataka
+
+Učitavamo podatke i pohranjujemo ih u varijablu "data".
+```{r}
+# Učitavanje podataka
+data <- read.csv("data.csv")
+```
+
+Prikazujemo sažeti prikaz podataka kako bi dobili uvid u građu i sadržaj.
+```{r}
+library(dplyr)
+glimpse(data)
+```
+
+Provjeravamo postoje li nedostajeći podatci.
+```{r Provjera broja redaka s nedostajećim vrijednostima}
+sum(!complete.cases(data))
+```
+
+
+```{r}
+for (name in names(data)) {
+  if (sum(is.na(data[[name]])) > 0) {
+    print(name)
+  }
+}
+```
+
+
+S obzirom na mali udio nedostojećih podataka te kako bismo olakšali kasniju analizu zavisnosti prihoda, iz podataka uklanjamo nedostajeće vrijednosti.
+
+```{r Uklanjanje nedostajećih podataka}
+data.full = data[complete.cases(data),]
+```
+ \
+ \
+ 
+***
+
+\
+
+\section*{Zavisnost izmedu dobi klijenta i najčešće korištenih prodajnih kanala}
+
+Cilj ove analize bio je ispitati postoji li zavisnost između dobi klijenata i njihovih preferencija za određene prodajne kanale, uključujući kupovine putem interneta, kataloga i u trgovinama, kao i učestalost posjeta web stranici. 
+
+Kako bismo zaključili nešto o zavisnosti između ove dvije varijable, prvo je bilo potrebno prilagoditi podatke koje imamo.
+Dobi klijenata raspoređene su u starosne skupine na temelju godine rođenja koja je jedan od stupaca u dobivenim podacima. Intervali dobnih skupina koje su definirane su 20-34, 35-49, 50-64, 65-79 i više od 80 godina.
+
+
+```{r, echo=FALSE}
+library(ggplot2)
+library(dplyr)
+
+# Dodavanje kolone za dob
+current_year <- as.numeric(format(Sys.Date(), "%Y"))
+data$Age <- current_year - data$Year_Birth
+
+# Kategorizacija dobi u grupe
+data$Age_Group <- cut(
+  data$Age,
+  breaks = c(20, 35, 50, 65, 80, 150),
+  labels = c("20-34", "35-49", "50-64", "65-79", "80+"),
+  right = FALSE
+)
+```
+
+Nakon toga, podaci su analizirani pomoću vizualizacija i statističkih testova.
+
+<center>
+## Vizualizacija - boxplot grafovi
+</center>
+
+
+```{r, echo=FALSE}
+# Vizualizacija: Boxplot za svaki prodajni kanal prema dobnim grupama
+channels <- c("NumWebPurchases", "NumCatalogPurchases", "NumStorePurchases")
+
+for (channel in channels) {
+  p <- ggplot(data, aes(x = Age_Group, y = get(channel), fill = Age_Group)) +
+    geom_boxplot() +
+    labs(
+      title = paste("Distribucija", channel, "prema dobnim grupama"),
+      x = "Dobna grupa",
+      y = channel
+    ) +
+    theme_minimal()
+  p + theme(
+  text = element_text(size = 10),    # Veličina fonta
+  axis.text = element_text(size = 8), # Veličina teksta osi
+  plot.title = element_text(size = 12) # Veličina naslova
+  )
+  print(p)
+}
+```
+Za svaki prodajni kanal (kupovine putem interneta, kataloga, trgovina i posjete web stranici) napravljeni su kutijasti dijagrami (boxplots) kako bi se prikazala distribucija podataka po dobnim grupama. Rezultati su pokazali:
+
+Kupovine putem interneta (NumWebPurchases): Mlađe grupe imaju veću sklonost ka ovom kanalu, dok stariji klijenti rjeđe koriste internet za kupovinu.
+Kupovine putem kataloga (NumCatalogPurchases): Ovaj kanal je popularniji među starijim klijentima, dok mlađe grupe imaju znatno manje kupovina na ovaj način.
+Kupovine u trgovinama (NumStorePurchases): Ovaj kanal pokazuje slične obrasce među svim dobnim grupama, s blagim porastom kod srednjih i starijih grupa.
+<left>
+## ANOVA test
+</left>
+```{r, echo=FALSE}
+# ANOVA test za svaki kanal
+anova_results <- lapply(channels, function(channel) {
+  model <- aov(get(channel) ~ Age_Group, data = data)
+  summary(model)
+})
+
+# Ispis rezultata ANOVA testova
+names(anova_results) <- channels
+anova_results
+
+
+```
+
+Rezultati ANOVA testa za sva četiri kanala pokazuju statistički značajne razlike među dobnim grupama (p-vrijednosti < 0.05). To znači da postoji zavisnost između dobi klijenata i preferiranih prodajnih kanala.
+
+
+<left>
+## X2- test
+</left>
+
+```{r, echo=FALSE}
+
+data$Age_Group_big <- cut(
+  data$Age,
+  breaks = c(20, 46, 65, 150),
+  labels = c("20-45", "46-64", "65+"),
+  right = FALSE
+)
+
+data$preferred_channel <- apply(data[, c("NumWebPurchases", "NumStorePurchases", "NumCatalogPurchases")], 1, function(row) {
+  names(row)[which.max(row)]
+})
+
+contingency_table <- table(data$Age_Group_big, data$preferred_channel)
+
+print(contingency_table)
+
+
+
+```
+Na kraju smo proveli hi-kvadrat test:
+```{r, echo=TRUE}
+
+chi_test <- chisq.test(contingency_table)
+
+print(chi_test)
+
+```
+Kada smo dobili kontigencijsku tablicu, mogli smo napraviti test kojime ćemo utvrditi zavisnost varijabli. Hi-kvadrat test je statistički test koji se koristi za utvrđivanje postoji li značajna povezanost između kategoričkih varijabli. Uspoređuje opažene frekvencije pojavljivanja u različitim kategorijama s frekvencijama koje se očekuju ako ne postoje povezanosti između varijabli. Uvjet za pouzdanost je da je očekivana frekvencija u svakoj ćeliji kontigencijske tablice veća od 5. To smo provjerili:
+```{r, echo=TRUE}
+
+min(chi_test$expected)
+
+```
+
+
+
+Za hi-test vrijedi ako je p-vrijednost manja od 0.05, ispitivane varijable su zavisne. Na temelju p-vrijednosti zaključujemo da su dob klijenta i najčešće korišten prodajni kanal zavisne varijable. 
+
+ \
+ \
+ 
+***
+
+\
+
+
+\section*{Usporedba iznosa potrošenog na slatkiše kod osoba s djecom i osoba bez djece}
+
+Potrebno je odgovoriti na pitanje troše li kupci s djecom više na slatkiše nego kupci bez djece. Promatrana varijabla je MntSweetProducts koja određuje iznos potrošen na slatkiše u posljedne dvije godine. Ovdje su prikazane mjere centralne tendencije i histogram varijable MntSweetProducts:
+```{r, echo=FALSE}
+summary(data$MntSweetProducts)
+hist(data$MntSweetProducts,main='iznos potrosen na slatkise', xlab='MntSweetProducts', ylab='')
+```
+  
+  
+Iz deskriptivne statistike vidi se da distribucija varijable MntSweetProducts nije simetrična i ima težak desni rep. Također, moguće je pretpostaviti da distribucija nije normalna. Bilo bi moguće i formalnije pokazati je li ova distribucija normalna, ali to nije potrebno jer se kasnije koriste samo neparametarski testovi koji ne zahtijevaju normalnost.  
+
+Prije provedbe bilo kojih testova potrebno je podijeliti skup podataka na podskup kupaca s djecom i podskup bez djece. U daljnjoj analizi promatra se varijabla MntSweetProducts kod kupaca s djecom i varijabla MntSweetProducts kod kupaca bez djece.
+
+Histogram za iznos potrošen na slatkiše za osobe s djecom: 
+```{r, echo=TRUE}
+with_kids = data[data$Kidhome>=1,]
+hist(with_kids$MntSweetProducts,main='s djecom', xlab='potroseni iznos', ylab='')
+summary(with_kids$MntSweetProducts)
+```
+
+
+Histogram za iznos potrošen na slatkiše za osobe bez djece:
+```{r, echo=TRUE}
+without_kids = data[data$Kidhome == 0,]
+hist(without_kids$MntSweetProducts,main='bez djece', xlab='potrosen iznos', ylab='')
+summary(without_kids$MntSweetProducts)
+```
+
+Medijani varijable MntSweetProducts za ove dvije skupine:  
+
+```{r}
+median(with_kids$MntSweetProducts)
+median(without_kids$MntSweetProducts)
+```
+```{r,echo=FALSE}
+
+# Combine the data with an additional column indicating 's djecom' or 'bez djece'
+with_kids$Group <- "s djecom"
+without_kids$Group <- "bez djece"
+combined_data <- rbind(with_kids, without_kids)
+
+# Create a single ggplot with faceting
+p <- ggplot(combined_data, aes(x = Group, y = MntSweetProducts, fill = Group)) +
+  geom_boxplot() +
+  labs(
+    title = "Distribucija MntSweetProducts prema grupama",
+    x = "Grupa",
+    y = "MntSweetProducts"
+  ) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 10),    # Font size
+    axis.text = element_text(size = 8), # Axis text size
+    plot.title = element_text(size = 12) # Title font size
+  )
+
+# Display the plot
+print(p)
+```
+  
+  
+Na temelju box-plotova moguće je vidjeti da je medijan varijable MntSweetProducts veći u uzorku bez djece. Također postoji mnogo potencijalnih outliera u oba uzorka, ali za većinu njih nije moguće zaključiti da se radi o pogreškama te ih zato nema smisla uklanjati iz uzorka. Vidi se i da su vrijednosti u uzorku bez djece raspršenije (veći IQR) nego u uzorku s djecom.
+
+Mann-Whitney-Wilcoxonov test (U-test)  
+Ovaj test koristi se za testiranje jednakosti medijana dviju populacija ili za testiranje jednakosti distribucija s alternativom da jedna stohastički dominira. Prva interpretacija testa može se koristiti pod uvjetom da znamo da distribucije slučajnih varijabli imaju isti oblik a razlikuju se samo u pomaku (F1(x)=F2(x+a)). Zbog toga što dvije varijable koje mi promatramo nisu simetrične i jedna je više raspršena od druge potrebno je interpretirati U-test na drugi način.  
+
+Objašnjenja parametara funkcije wilcox.text():  
+exact=FALSE znači da se može korsititi normalna aproksimacija U-testa jer n1>8 i n2>8, paired=FALSE znači da se koristi test gdje podatci iz dva uzorka moraju biti nezavisni.  
+
+H0: Kupci s djecom troše jednako puno na slatkiše kao kupci bez djece tj. distribucije su jednake  
+
+H1: Kupci bez djece troše više na slatkiše od kupaca s djecom. tj. distribucija varijable MntSweetProducts kod kupaca bez djece stohastički dominira
+```{r}
+result = wilcox.test(with_kids$MntSweetProducts,without_kids$MntSweetProducts,exact=FALSE,paired=FALSE,alternative = "less")
+print(result)
+```
+Na razini značajnosti 5% moguće je odbaciti hipotezu H0 i zaključiti da kupci bez djece troše više na slatkiše nego kupci s djecom.
+
+ \
+ \
+ 
+***
+
+\
+
+\section*{Razlika u prihodima između skupina različitog stupnja obrazovanja}
+
+Potrebno je utvrditi postoji li statistički značajna razlika u prihodima između skupina različitog stupnja obrazovanja. Razlikujemo pet stupnjeva obrazovanja: "2n Cycle", "Basic", "Graduation", "Master" i "PhD". Testiranje ćemo provesti usporedbom sredina prihoda za različite stupnjeve obrazovanja.
+
+## Vizualizacija i obrada podataka
+Prije provedbe samog testiranja, vizulazirat ćemo podatke kako bi dobili uvid u problem koji modeliramo.
+```{r Vizualizacija podataka}
+
+#Prikaz podataka box-plot dijagramom
+p <- ggplot(data=data.full, aes(x = Education, y = Income, fill = Education)) +
+    geom_boxplot() +
+    labs(
+      title = paste("Distribucija prema stupnju obrazovanja"),
+      x = "stupanj obrazovanja",
+      y = "prihod"
+    ) +
+    theme_minimal()
+  p <- p + theme(
+  text = element_text(size = 10),    # Veličina fonta
+  axis.text = element_text(size = 8), # Veličina teksta osi
+  plot.title = element_text(size = 12) # Veličina naslova
+  )
+  print(p)
+```
+Analiziramo graf i uviđamo nepravilnost u podatcima, odnosno prisutnost stršeće vrijednosti. Stršeće vrijednosti unose šum u podatke te tako otežavaju analizu. Ukoliko takvi podatci ne nose puno informacija možemo ih ukloniti iz našeg skupa podataka.
+
+```{r}
+#tražimo točan redak outliera
+ind = which(data.full$Income > 2e+05)
+
+#prikaz stršeće vrijednosti u podatcima
+data[ind,]
+
+#uklanjamo outlier iz podataka
+data.cleaned = data.full[-ind,]
+```
+Ponovno iscrtavamo graf.
+```{r Vizualizacija očišćenih podataka}
+ p <- ggplot(data.cleaned, aes(x = Education, y = Income, fill = Education)) +
+    geom_boxplot() +
+    labs(
+      title = paste("Distribucija prema stupnju obrazovanja"),
+      x = "stupanj obrazovanja",
+      y = "prihod"
+    ) +
+    theme_minimal()
+  p <- p + theme(
+  text = element_text(size = 10),    # Veličina fonta
+  axis.text = element_text(size = 8), # Veličina teksta osi
+  plot.title = element_text(size = 12) # Veličina naslova
+  )
+  print(p)
+```
+Ovakav prikaz podataka lako je čitljiv te se iz njega da naslutiti da postoji razlika u primanjima između stupnja obrazovanja "Basic" u odnosu na ostale. Prelazimo na usporedbu srednjih prihoda za različite skupine stupnja obrazovanja. U tu svrhu primjenit ćemo analizu varijance (ANOVA).
+
+## ANOVA
+
+Pretpostavke ANOVA-e su: nezavisnost pojedinih podataka u uzorku, normalna raspodjela podataka te homogenost varijanci među podatcima.
+
+Pretpostavku normalnosti podataka provjerit ćemo Lillieforsovom inačicom Kolmogorov-Smirnov testa. Test je oblikovan tako da je stupanj obrazovanja varijabla koja određuje populacije i prihod zavisna varijabla.
+
+Pretpostavke su slijedeće:
+\
+\
+$H0:~~Podatci~~dolaze~~iz~~normalne~~distribucije$
+  
+$H1:~~Podatci~~ne~~dolaze~~iz~~normalne~~distribucije$
+\
+\
+
+```{r}
+require(nortest)
+
+lillie.test(data.cleaned$Income[data.cleaned$Education=='2n Cycle'])
+lillie.test(data.cleaned$Income[data.cleaned$Education=='Basic'])
+lillie.test(data.cleaned$Income[data.cleaned$Education=='Graduation'])
+lillie.test(data.cleaned$Income[data.cleaned$Education=='Master'])
+lillie.test(data.cleaned$Income[data.cleaned$Education=='PhD'])
+```
+
+Na razini značajnosti $\alpha = 0.05$ odbacujemo pretpostavke o normalnosti za grupe s obrazovanjem "2n Cycle", "Graduation" i "Master".
+Provođenjem logaritamske transformacije nad podatcima ne dobivamo znatno poboljšanje u normalnosti podataka. S obzirom na odbacivanje pretpostavke o normalnosti distribucije koristit ćemo $\textbf{Kruskal-Wallisov test}$ kao neparametarsku inačicu ANOVA-e. Sukladno tome, nije nužno provoditi provjeru jednakosti varijanci jer neparametarskt test nema pretpostavki o distribuciji podataka, no ovdje ćemo u svrhu analize provesti i tu provjeru.
+Za testiranje homogenosti varijanci poslužit ćemo se Bartlettovim testom.
+
+Pretpostavke:
+\
+\
+$H0:~~\sigma_{\text{2n cycle}} = \sigma_{\text{basic}} = \sigma_{\text{graduation}} = \sigma_{\text{master}} = \sigma_{\text{phd}}$
+  
+$H1:~~Postoje~~barem~~dvije~~\sigma_{\text{i}}~~koje~~se~~razlikuju$
+\
+\
+```{r}
+# Testiranje homogenosti varijance uzoraka Bartlettovim testom
+bartlett.test(data.cleaned$Income ~ data.cleaned$Education)
+```
+Zbog vrlo niske p vrijednosti na razini značajnosti $\alpha = 0.05$ možemo odbaciti nul-hipotezu i zaključiti da postoji par varijanci koji se razlikuje. Ovime potvrđujemo uporabu neparametarskog $\textbf{Kruskal-Wallisovog}$ testa s obzirom na manjak pretpostavki o distribuciji podataka. 
+
+Pretpostavke:
+\
+\
+$H0:~~\mu_{\text{2n cycle}} = \mu_{\text{basic}} = \mu_{\text{graduation}} = \mu_{\text{master}} = \mu_{\text{phd}}$
+  
+$H1:~~barem~~dva~~\mu_{\text{i}}~~nisu~~jednaka.$
+\
+\
+
+Provodimo testiranje.
+```{r Kruskal-Wallisov test}
+kruskal.test(Income ~ Education, data = data.cleaned)
+```
+Na nivou značajnosti od $\alpha = 0.05$ možemo odbaciti nul-hipotezu o jednakosti srednjih vrijednosti zbog izrazito niske p vrijednosti.
+
+Nastavljamo daljnju analizu kako bismo provjerili sumnju u razlikovanje prihoda "Basic" razine obrazovanja u odnosu na ostale. Koristit ćemo Dunnov test za testiranje parova koji se koristi kad podatci nisu normalno distribuirani ili kada se ne mogu pretpostaviti jednakosti varijanci među grupama.
+
+
+```{r}
+library(dunn.test)
+
+dunn.test(data.cleaned$Income, g = data.cleaned$Education, method = "bonferroni")
+```
+
+Sukladno pretpostavci, prihod grupe s "Basic" razinom obrazovanja razlikuje se u odnosu na srednje vrijednosti ostalih grupa. Postoji još značajna razlika grupe "PhD" u odnosu na "2n Cycle" i "Graduation", dok razlika između stupnja "PhD" i "Master" nije statistički značajna.
+
+
+
+
+```{r}
+library(dplyr)
+```
+
+\
+\
+
+***
+
+\section*{Mogu li dostupne varijable predvidjeti ukupnu potrošnju kupca?}
+
+
+### Vizualizacija i uređivanje podataka
+\
+U našem datasetu ne postoji unaprijed definirana varijabla koja predstavlja ukupnu potrošnju kupca, već su dostupne pojedinačne potrošnje po kategorijama (vina, voća, mesa, ribe, slatkiša i zlata). Kako bismo modelirali ponašanje ukupne potrošnje, prvo je potrebno definirati novu varijablu – ukupnu potrošnju – kao sumu svih pojedinačnih potrošnji.
+
+```{r}
+# Definiranje varijable 'ukupna_potrosnja'
+data.cleaned$ukupna_potrosnja <- data.cleaned$MntWines + 
+                              data.cleaned$MntFruits + 
+                              data.cleaned$MntMeatProducts + 
+                              data.cleaned$MntFishProducts + 
+                              data.cleaned$MntSweetProducts + 
+                              data.cleaned$MntGoldProds
+
+# Prikaz prvih nekoliko vrijednosti
+head(data.cleaned$ukupna_potrosnja)
+
+hist(data.cleaned$ukupna_potrosnja)
+```
+
+\
+
+Sada kada imamo varijablu čije buduće ponašanje želimo predvidjeti, ispitati ćemo različite nezavisne varijable koje bi mogle utjecati na njeno ponašanje. Kada promatramo utjecaj samo jedne nezavisne varijable na zavisnu, *scatter plot* nam može pomoći s vizualizacijom. Varijable mogu pozitivno i negativno utjecati na zavisnu varijablu. Očekujemo da će godišnji prihod kućanstva imati izražen pozitivan utjecaj na ukupnu potrošnju.
+
+```{r}
+plot(data.cleaned$Income, data.cleaned$ukupna_potrosnja, 
+     main = "Distribucija ukupne potrosnje prema godisnjem prihodu kucanstva")
+```
+
+Pogledajmo i jednog slabijeg kandidata za regresora, primjerice stupanj obrazovanja kupca. Kako je *Education* kategorijska varijabla, koristiti ćemo *box plot*.
+
+```{r}
+
+
+boxplot(ukupna_potrosnja ~ Education, data = data.cleaned,
+        xlab = "Stupanj obrazovanja", 
+        ylab = "Ukupna potrosnja",
+        col = c("lightblue", "pink", "lightgreen", "orange", "purple"),
+        main = "Distribucija ukupne potrosnje prema stupnju obrazovanja")
+
+```
+
+Iz prikazanog grafa je vidljivo kako stupanj obrazovanja ne govori puno o ukupnoj potrošnji kupca, odnosno unutar nekoliko različitih kategorija obrazovnog stupnja, kupci troše približno jednako.
+
+\
+
+Dodati ćemo i varijablu Age, koju ćemo koristiti umjesto godine rođenja.
+
+```{r}
+data.cleaned$Age <- 2025 - data.cleaned$Year_Birth 
+head(data.cleaned$Age)
+hist(data.cleaned$Age)
+
+#maknemo strsece vrijednosti
+data.cleaned <- subset(data.cleaned, Age <= 100)
+hist(data.cleaned$Age, main = "Nakon uklanjanja strsece vrijednosti")
+```
+
+
+
+### Modeli linearne regresije
+
+Kako bi pronašli najbolji model, potrebno testirati više modela linearne regresije odabirom različitih regresora. Za pojedine modele moramo izračunati $R^2$ vrijednost, koja nam govori koliko dobro model objašnjava varijabilnost podataka. Model s najvećom $R^2$ vrijednosti je najbolji model.
+
+Za početak pogledati ćemo vrlo jednostavne modele, koji koriste samo jedan regresor.
+
+```{r}
+fit.income = lm(ukupna_potrosnja ~ Income, data = data.cleaned)
+summary(fit.income)
+plot(data.cleaned$Income,data.cleaned$ukupna_potrosnja) 
+lines(data.cleaned$Income,fit.income$fitted.values,col='pink')
+r_squared1 <- summary(fit.income)$r.squared
+
+
+fit.education = lm(ukupna_potrosnja ~ Education, data = data.cleaned)
+summary(fit.education)
+r_squared2 <-summary(fit.education)$r.squared
+
+cat("R^2 za Income kao regresor:", r_squared1 %>% round(4),
+"\nR^2 za Education kao regresor:", r_squared2 %>% round(4), "\n")
+```
+
+Sada smo pokazali pomoću $R^2$ vrijednosti kako je godišnji prihod zaista bolji regresor od stupnja obrazovanja. No, kako bi model bio bolje prilagođen podatcima, potrebno je dodati još regresora. Stoga ćemo napraviti nekoliko modela višestruke regresije.
+
+```{r}
+#varijable vezane uz "obiteljske podatke kao regresori
+    #~ Marital_Status, Teenhome, Kidhome
+model1 = lm(ukupna_potrosnja ~ Marital_Status + Teenhome + Kidhome, data = data.cleaned)
+model_summary1 <- summary(model1)
+r_squared1 <- model_summary1$r.squared
+
+#dob, stupanj obrazovanja i zarada kao regresori
+    #~ Age, Education, Income
+model2 = lm(ukupna_potrosnja ~ Age + Education + Income, data = data.cleaned)
+model_summary2 <- summary(model2)
+r_squared2 <- model_summary2$r.squared
+
+#broj dana od zadnje kupnje, zalbe u protekle 2 godine i broj kupnji sa popustom, prihvacene kamapanje kao regresori
+    #~ Recency, Complain, NumDealsPurchases, AcceptedCmp1-5, Response
+model3 = lm(ukupna_potrosnja ~ Recency + Complain + NumDealsPurchases + AcceptedCmp1 + 
+              AcceptedCmp2 + AcceptedCmp3 + AcceptedCmp4 + AcceptedCmp5 + Response,  
+              data = data.cleaned)
+model_summary3 <- summary(model3)
+r_squared3 <- model_summary3$r.squared
+
+#broj obavljenih kupnji putem svih prodajnih kanala kao regresori
+    #~ NumWebPurchases, NumCatalogPurchases, NumStorePurchases
+
+model4 = lm(ukupna_potrosnja ~ NumWebPurchases + NumCatalogPurchases + NumStorePurchases, data = data.cleaned)
+model_summary4 <- summary(model4)
+r_squared4 <- model_summary4$r.squared
+
+cat("R^2 za model1:",
+    r_squared1 %>% round(4),
+  "\nR^2 za model2:",
+    r_squared2 %>% round(4),
+  "\nR^2 za model3:", 
+    r_squared3 %>% round(4),
+  "\nR^2 za model4:",
+    r_squared4 %>% round(4),"\n")
+```
+
+Iz danih modela, vidimo kako vrlo visoku $R^2$ postižu oni koji kao regresore koriste Income i broj kupnji obavljenih putem svakog pojedinog prodajnog kanala. Te ćemo regresore svakako uključiti u naš finalni model jer vrlo dobro objašnjavaju ponašanje varijable koje želimo predvidjeti.
+
+Prije nego napravimo model višestruke regresije, bitno je osigurati se da parovi varijabli nisu pretjerano korelirani. Visoka koreliranost varijabli daje nestabilne rezultate. Varijable koje bi mogle biti korelirane su broj posjeta web stranici i broj obavljenih kupnji putem web stranice, broj kupnji obavljenih putem kataloga i web stranice te dob i prihod.
+
+```{r}
+koef_korelacije = cor(data.cleaned$NumWebPurchases, data.cleaned$NumWebVisitsMonth)
+cat("Koeficijent korelacije između varijabli NumWebVisitsMonth i NumWebStorePurchases:",
+    koef_korelacije %>% round(4),"\n")
+
+koef_korelacije2 = cor(data.cleaned$NumCatalogPurchases, data.cleaned$NumWebPurchases)
+cat("Koeficijent korelacije između varijabli NumCatalogPurchases i NumWebStorePurchases:",
+    koef_korelacije2 %>% round(4),"\n")
+
+koef_korelacije3 = cor(data.cleaned$Age, data.cleaned$Income)
+cat("Koeficijent korelacije između varijabli Age i Income:",
+    koef_korelacije3 %>% round(4),"\n")
+```
+
+Ipak, vrijednosti koeficijenata korelacije nisu visoke, stoga je dozvoljeno sve varijable koristiti u modelu.
+
+\
+
+U nekim situacijama poželjno je primijeniti transformacije na ulazne varijable kako bi se bolje odrazila njihova nelinearna priroda. Uz pretpostaku da djeca i stariji ljudi troše manje od odraslih, dodati ćemo i kvadrat varijable Age u model kako bismo modelirali nelinearan pad potrošnje s godinama. Ova modifikacija omogućuje bolju prilagodbu modela pretpostavljenim obrascima ponašanja korisnika.
+
+
+```{r}
+
+model_age1 = lm(ukupna_potrosnja ~ Age + Education + Income, data = data.cleaned)
+model_summary1 <- summary(model_age1)
+r_squared1 <- model_summary1$r.squared
+
+model_age2 = lm(ukupna_potrosnja ~ I(Age^2) + Age + Education + Income, data = data.cleaned)
+model_summary2 <- summary(model_age2)
+r_squared2 <- model_summary2$r.squared
+
+cat("R^2 za model sa linearnom varijablom Age:",
+    r_squared1 %>% round(4),
+    "\nR^2 za model sa linearnom i kvadratnom varijablom Age:",
+     r_squared2 %>% round(4),"\n")
+
+```
+
+Sada možemo napraviti naš finalni model. S obzirom da u njemu uključujemo mnogo regresora, uz $R^2$ uzeti ćemo u obzir i adjusted $R^2$. Adjusted $R^2$ penalizira dodavanje parametara u model, čime sprječava nepotrebno povećanje složenosti. Kako preferiramo odabrati jednostavniji model, pod uvjetom da daje jednako dobre rezultate kao složeniji modeli, adjusted $R^2$ nam pomaže donijeti odluku o tome koji model najbolje balansira preciznost i složenost.
+
+```{r}
+model = lm(ukupna_potrosnja ~ I(Age^2) + Age + Education + Income + NumWebPurchases + NumWebVisitsMonth + NumCatalogPurchases + NumStorePurchases +  Teenhome + Kidhome, data = data.cleaned)
+model_summary <- summary(model)
+r_squared <- model_summary$r.squared
+r_squared_adj <- model_summary$adj.r.squared
+
+#izbacujemo: Education i NumWebVisitsMonth
+model2 = lm(ukupna_potrosnja ~ I(Age^2) + Age + Income + NumWebPurchases + NumCatalogPurchases + NumStorePurchases +  Teenhome + Kidhome, data = data.cleaned)
+model_summary2 <- summary(model2)
+r_squared2 <- model_summary2$r.squared
+r_squared_adj2 <- model_summary2$adj.r.squared
+
+cat("R^2: ",r_squared %>% round(4),
+    "\nR^2 adjusted:",r_squared_adj %>% round(4),"\n")
+
+cat("R^2 nakon izbacivanja Education i NumWebVisitsMonth: ",r_squared2 %>% round(4),
+    "\nR^2 adjusted nakon izbacivanja Education i NumWebVisitsMonth:",r_squared_adj2 %>% round(4),"\n")
+```
+
+Rezultati upućuju na to da varijable Education i NumWebVisitsMonth ipak daju korisne informacije modelu, čak i kada pogledamo adjusted $R^2$.
+
+Provjeriti ćemo još da nije narušena bitna pretpostavka linearne regresije: normalnost reziduala, pomoću histograma te *Q-Q plota*.
+
+```{r}
+hist(rstandard(model))
+
+qqnorm(rstandard(model)) 
+qqline(rstandard(model))
+```
+
